@@ -4,21 +4,33 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireUser } from "@/lib/auth";
 import { CATEGORIES } from "@/lib/checklist";
 
 async function toggleTask(formData: FormData) {
   "use server";
+  await requireUser();
   const id = Number(formData.get("id"));
   const done = formData.get("done") === "true";
-  const hireId = String(formData.get("hire_id"));
-  const { error } = await supabaseAdmin().from("pb_tasks").update({ done: !done }).eq("id", id);
-  if (error) throw new Error(error.message);
+  const hireId = Number(formData.get("hire_id"));
+  // Server action je veřejný endpoint – ověř vstupy a omez update na úkol daného nováčka.
+  if (!Number.isSafeInteger(id) || !Number.isSafeInteger(hireId)) return;
+  const { error } = await supabaseAdmin()
+    .from("pb_tasks")
+    .update({ done: !done })
+    .eq("id", id)
+    .eq("hire_id", hireId);
+  if (error) {
+    console.error("Změna úkolu selhala:", error.message);
+    throw new Error("Nepodařilo se uložit změnu");
+  }
   revalidatePath(`/hire/${hireId}`);
   revalidatePath("/");
 }
 
 async function Detail({ params }: { params: Promise<{ id: string }> }) {
   await connection();
+  await requireUser();
   const { id } = await params;
   const hireId = Number(id);
   if (!Number.isInteger(hireId)) notFound();

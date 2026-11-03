@@ -3,14 +3,20 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireUser } from "@/lib/auth";
+import { signOut } from "@/app/auth/actions";
 import { CATEGORIES, TEMPLATE } from "@/lib/checklist";
 
 async function createHire(formData: FormData) {
   "use server";
+  await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   const position = String(formData.get("position") ?? "").trim();
   const startDate = String(formData.get("start_date") ?? "");
   if (!name || !position || !startDate) return;
+  // Server action je veřejný endpoint – validace nesmí spoléhat na atributy formuláře.
+  if (name.length > 200 || position.length > 200) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(Date.parse(startDate))) return;
 
   const db = supabaseAdmin();
   const { data: hire, error } = await db
@@ -18,25 +24,35 @@ async function createHire(formData: FormData) {
     .insert({ name, position, start_date: startDate })
     .select("id")
     .single();
-  if (error || !hire) throw new Error(error?.message ?? "Nepodařilo se uložit nováčka");
+  if (error || !hire) {
+    console.error("Uložení nováčka selhalo:", error?.message);
+    throw new Error("Nepodařilo se uložit nováčka");
+  }
 
   const tasks = CATEGORIES.flatMap((c) =>
     TEMPLATE[c.key].map((title, i) => ({ hire_id: hire.id, category: c.key, title, sort: i })),
   );
   const { error: tasksError } = await db.from("pb_tasks").insert(tasks);
-  if (tasksError) throw new Error(tasksError.message);
+  if (tasksError) {
+    console.error("Vytvoření checklistu selhalo:", tasksError.message);
+    throw new Error("Nepodařilo se vytvořit checklist");
+  }
 
   redirect(`/hire/${hire.id}`);
 }
 
 async function Overview() {
   await connection();
+  await requireUser();
   const db = supabaseAdmin();
   const [{ data: hires, error }, { data: tasks }] = await Promise.all([
     db.from("pb_hires").select("id, name, position, start_date").order("start_date", { ascending: true }),
     db.from("pb_tasks").select("hire_id, done"),
   ]);
-  if (error) return <p className="text-red-600">Chyba: {error.message}</p>;
+  if (error) {
+    console.error("Načtení přehledu selhalo:", error.message);
+    return <p className="text-red-600">Nepodařilo se načíst přehled.</p>;
+  }
   if (!hires?.length) return <p className="text-gray-500">Zatím tu nikdo není. Zadej prvního nováčka.</p>;
 
   const total = new Map<number, number>();
@@ -79,7 +95,12 @@ async function Overview() {
 export default function Home() {
   return (
     <main className="mx-auto max-w-2xl p-8">
-      <h1 className="text-2xl font-bold">Preboarding</h1>
+      <div className="flex items-baseline justify-between">
+        <h1 className="text-2xl font-bold">Preboarding</h1>
+        <form action={signOut}>
+          <button className="text-sm text-gray-500 hover:underline">Odhlásit</button>
+        </form>
+      </div>
       <p className="mb-1 text-sm text-gray-500">Přehled nováčků a stavu jejich příprav na nástup.</p>
       <p className="mb-6 text-xs text-amber-600">Demo: zadávej jen smyšlená data, žádné osobní údaje.</p>
 
