@@ -4,10 +4,12 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireUser } from "@/lib/auth";
 import { CATEGORIES } from "@/lib/checklist";
 
 async function toggleTask(formData: FormData) {
   "use server";
+  await requireUser();
   const id = Number(formData.get("id"));
   const done = formData.get("done") === "true";
   const hireId = Number(formData.get("hire_id"));
@@ -28,6 +30,7 @@ async function toggleTask(formData: FormData) {
 
 async function Detail({ params }: { params: Promise<{ id: string }> }) {
   await connection();
+  await requireUser();
   const { id } = await params;
   const hireId = Number(id);
   if (!Number.isInteger(hireId)) notFound();

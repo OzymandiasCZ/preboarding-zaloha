@@ -3,10 +3,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireUser } from "@/lib/auth";
+import { signOut } from "@/app/auth/actions";
 import { CATEGORIES, TEMPLATE } from "@/lib/checklist";
 
 async function createHire(formData: FormData) {
   "use server";
+  await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   const position = String(formData.get("position") ?? "").trim();
   const startDate = String(formData.get("start_date") ?? "");
@@ -40,6 +43,7 @@ async function createHire(formData: FormData) {
 
 async function Overview() {
   await connection();
+  await requireUser();
   const db = supabaseAdmin();
   const [{ data: hires, error }, { data: tasks }] = await Promise.all([
     db.from("pb_hires").select("id, name, position, start_date").order("start_date", { ascending: true }),
@@ -91,7 +95,12 @@ async function Overview() {
 export default function Home() {
   return (
     <main className="mx-auto max-w-2xl p-8">
-      <h1 className="text-2xl font-bold">Preboarding</h1>
+      <div className="flex items-baseline justify-between">
+        <h1 className="text-2xl font-bold">Preboarding</h1>
+        <form action={signOut}>
+          <button className="text-sm text-gray-500 hover:underline">Odhlásit</button>
+        </form>
+      </div>
       <p className="mb-1 text-sm text-gray-500">Přehled nováčků a stavu jejich příprav na nástup.</p>
       <p className="mb-6 text-xs text-amber-600">Demo: zadávej jen smyšlená data, žádné osobní údaje.</p>
 
